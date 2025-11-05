@@ -415,6 +415,10 @@ class _GlyphBox(_AbstractBox):
     advance: int
     vertex_lists: list[_LayoutVertexList]
 
+    # Added to z component of background and foreground text decoration to prevent
+    # masking when depth test is enabled.
+    _ZORDER_GAP = 0.01
+
     def __init__(self, owner: Texture, font: Font, glyphs: list[tuple[int, Glyph, GlyphPosition]], advance: int) -> None:
         """Create a run of glyphs sharing the same texture.
 
@@ -439,9 +443,11 @@ class _GlyphBox(_AbstractBox):
         self.glyphs = glyphs
         self.advance = advance
         self.vertex_lists = []
+        self._zorders: list[float] = []
 
-    def _add_vertex_list(self, vertex_list: _LayoutVertexList | VertexList, context: _LayoutContext) -> None:
+    def _add_vertex_list(self, vertex_list: _LayoutVertexList | VertexList, context: _LayoutContext, zorder: float) -> None:
         self.vertex_lists.append(vertex_list)
+        self._zorders.append(zorder)
         context.add_list(vertex_list)
 
     def place(self, layout: TextLayout, i: int, x: float, y: float, z: float, line_x: float, line_y: float,
@@ -495,6 +501,8 @@ class _GlyphBox(_AbstractBox):
             indices.extend([element + (glyph_idx * 4) for element in [0, 1, 2, 0, 2, 3]])
 
         t_position = (x, y, z)
+        t_background_position = (x, y, z - self._ZORDER_GAP)
+        t_underline_position = (x, y, z + self._ZORDER_GAP)
 
         vertex_list = layout.program.vertex_list_indexed(n_glyphs * 4, GL_TRIANGLES, indices, layout.batch, group,
                                                          position=("f", vertices),
@@ -504,7 +512,7 @@ class _GlyphBox(_AbstractBox):
                                                          rotation=("f", ((rotation,) * 4) * n_glyphs),
                                                          visible=("f", ((visible,) * 4) * n_glyphs),
                                                          anchor=("f", ((anchor_x, anchor_y) * 4) * n_glyphs))
-        self._add_vertex_list(vertex_list, context)
+        self._add_vertex_list(vertex_list, context, t_position[2])
 
         # Decoration (background color and underline)
         # -------------------------------------------
@@ -551,12 +559,12 @@ class _GlyphBox(_AbstractBox):
             background_list = decoration_program.vertex_list_indexed(bg_count, GL_TRIANGLES, background_indices,
                                                                      layout.batch, layout.background_decoration_group,
                                                                      position=("f", background_vertices),
-                                                                     translation=("f", t_position * bg_count),
+                                                                     translation=("f", t_background_position * bg_count),
                                                                      colors=("Bn", background_colors),
                                                                      rotation=("f", (rotation,) * bg_count),
                                                                      visible=("f", (visible,) * bg_count),
                                                                      anchor=("f", (anchor_x, anchor_y) * bg_count))
-            self._add_vertex_list(background_list, context)
+            self._add_vertex_list(background_list, context, t_background_position[2])
 
         if underline_vertices:
             ul_count = len(underline_vertices) // 3
@@ -564,17 +572,16 @@ class _GlyphBox(_AbstractBox):
             underline_list = decoration_program.vertex_list(ul_count, GL_LINES,
                                                             layout.batch, layout.foreground_decoration_group,
                                                             position=("f", underline_vertices),
-                                                            translation=("f", t_position * ul_count),
+                                                            translation=("f", t_underline_position * ul_count),
                                                             colors=("Bn", underline_colors),
                                                             rotation=("f", (rotation,) * ul_count),
                                                             visible=("f", (visible,) * ul_count),
                                                             anchor=("f", (anchor_x, anchor_y) * ul_count))
-            self._add_vertex_list(underline_list, context)
+            self._add_vertex_list(underline_list, context, t_underline_position[2])
 
     def update_translation(self, x: float, y: float, z: float) -> None:
-        translation = (x, y, z)
-        for _vertex_list in self.vertex_lists:
-            _vertex_list.translation[:] = translation * _vertex_list.count
+        for _vertex_list, _z in zip(self.vertex_lists, self._zorders):
+            _vertex_list.translation[:] = (x, y, _z) * _vertex_list.count
 
     def update_colors(self, colors: list[int], start: int, end: int) -> None:
         """Update the glyph colors only when specified by a single color attribute in set_style.
