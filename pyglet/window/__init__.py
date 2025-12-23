@@ -429,7 +429,7 @@ class BaseWindow(EventDispatcher, metaclass=_WindowMetaclass):
 
         void main()
         {
-            color = vec4(1.0, 0.0, 0.0, 1.0);
+            color = vec4(1.0, 1.0, 1.0, 0.0);
         }
     """
 
@@ -598,6 +598,9 @@ class BaseWindow(EventDispatcher, metaclass=_WindowMetaclass):
             self.activate()
 
     def _create_projection(self) -> None:
+        print("DEFAULT_FRAGMENT_SOURCE BEGIN")
+        print(self._default_fragment_source)
+        print("DEFAULT_FRAGMENT_SOURCE END")
         self._default_program = shader.ShaderProgram(
             shader.Shader(self._default_vertex_source, 'vertex'),
             shader.Shader(self._default_fragment_source, 'fragment'))

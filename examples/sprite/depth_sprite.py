@@ -18,7 +18,7 @@ fragment_source = """#version 150 core
     void main()
     {
         final_colors = texture(sprite_texture, texture_coords.xy) * vertex_colors;
-        
+
         // No GL_ALPHA_TEST in core, use shader to discard.
         if(final_colors.a < 0.01){
             discard;
@@ -47,7 +47,8 @@ class DepthSpriteGroup(pyglet.sprite.SpriteGroup):
 
 
 class DepthSprite(pyglet.sprite.Sprite):
-    group_class = DepthSpriteGroup
+    # group_class = DepthSpriteGroup
+    pass
 
 
 # Set example resource path.
@@ -56,6 +57,26 @@ pyglet.resource.reindex()
 
 image = pyglet.resource.image("pyglet.png")
 batch = pyglet.graphics.Batch()
+
+
+class DepthGroup(pyglet.graphics.Group):
+    def set_state(self):
+        glEnable(GL_DEPTH_TEST)
+        glDepthFunc(GL_LESS)
+
+    def unset_state(self):
+        glDisable(GL_DEPTH_TEST)
+
+group = DepthGroup()
+
+behind = pyglet.text.Label('Behind the sprites', font_size=18, weight='bold', x=10, y=100, batch=batch, group=group)
+# behind.set_style('background_color', (255, 0, 0, 255))
+behind.color = (255, 255, 255, 255)
+behind.z = -1.0
+above = pyglet.text.Label('Above the sprites', font_size=18, weight='bold', x=10, y=30, batch=batch, group=group)
+above.color = (255, 255, 255, 255)
+# above.set_style('background_color', (0, 0, 255, 255))
+above.z = 200.0
 
 sprites = []
 
@@ -66,9 +87,11 @@ depth_shader = pyglet.graphics.shader.ShaderProgram(vertex_shader, fragment_shad
 
 
 def make_sprite(zvalue):
-    sprite = DepthSprite(image, x=0, y=0, z=zvalue, batch=batch, program=depth_shader)
+    sprite = DepthSprite(image, x=0, y=0, z=zvalue, batch=batch, group=group, program=depth_shader
+                         )
     # Random color multiplier.
     sprite.color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+    sprite.opacity = 180
     # Add sprites to keep in memory, like a list. Otherwise, they will get GC'd when out of scope.
     sprites.append(sprite)
 
@@ -88,6 +111,7 @@ def update(dt):
         sprite.update(x=i * .75 * (image.width - 15),
                       y=.25 * window.height * (1 + math.cos(2 * elapsed + i * math.pi / sprite_count)))
         sprite.z = sprite.y
+        # print(f"Sprite {i}: y={sprite.y:.2f} z={sprite.z:.2f}")
     elapsed += dt
 
 
