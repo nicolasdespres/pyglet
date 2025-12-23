@@ -31,6 +31,9 @@ cf = cocoapy.cf
 
 CAMetalLayer = cocoapy.ObjCClass('CAMetalLayer')
 
+# Cocoa collection behavior flag to allow Spaces-style fullscreen
+NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7
+
 
 class CocoaMouseCursor(MouseCursor):
     api_drawable = False
@@ -216,6 +219,7 @@ class CocoaWindow(BaseWindow):
             self.switch_to()
             self.set_vsync(self._vsync)
             self.set_visible(self._visible)
+
 
         if not self._fullscreen:
             if self._style in ("transparent", "overlay"):
@@ -534,6 +538,29 @@ class CocoaWindow(BaseWindow):
     def maximize(self) -> None:
         if self._nswindow is not None:
             self._nswindow.zoom_(None)
+
+    def toggle_native_fullscreen(self) -> None:
+        """Toggle macOS native fullscreen (Spaces) for this window.
+
+        This uses Cocoa's `toggleFullScreen:` which avoids display capture
+        and is generally more stable than exclusive fullscreen on macOS.
+        """
+        if self._nswindow is not None:
+            # Guard against re-entrant view updates during transition
+            self._in_fullscreen_transition = True
+            try:
+                # Ensure window is key and front before toggling
+                NSApp = NSApplication.sharedApplication()
+                NSApp.activateIgnoringOtherApps_(True)
+                self._nswindow.makeKeyAndOrderFront_(None)
+                self._nswindow.toggleFullScreen_(None)
+            finally:
+                # Clear the transition flag shortly after toggle
+                try:
+                    from pyglet import clock
+                    clock.schedule_once(lambda dt: setattr(self, '_in_fullscreen_transition', False), 0.5)
+                except Exception:
+                    self._in_fullscreen_transition = False
 
     def set_vsync(self, vsync: bool) -> None:
         if pyglet.options.vsync is not None:

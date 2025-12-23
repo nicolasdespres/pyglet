@@ -148,16 +148,32 @@ class PygletView_Implementation:
         self._window = None
         self._textview.removeFromSuperviewWithoutNeedingDisplay()
         self._textview.release()
-        self._tracking_area.release()
+        try:
+            if self._tracking_area:
+                self._tracking_area.release()
+        except ValueError:
+            # _tracking_area may already be NULL/deallocated
+            pass
         cocoapy.send_super(self, 'dealloc')
 
     @PygletView.method('v')
     def updateTrackingAreas(self) -> None:
         # This method is called automatically whenever the tracking areas need to be
         # recreated, for example when window resizes.
-        if self._tracking_area:
-            self.removeTrackingArea_(self._tracking_area)
-            self._tracking_area.release()
+        try:
+            existing = self._tracking_area
+        except ValueError:
+            existing = None
+
+        if existing:
+            try:
+                self.removeTrackingArea_(existing)
+            except Exception:
+                pass
+            try:
+                existing.release()
+            except Exception:
+                pass
             self.associate("_tracking_area", None)
 
         tracking_options = (cocoapy.NSTrackingMouseEnteredAndExited | cocoapy.NSTrackingActiveInActiveApp |
@@ -170,8 +186,11 @@ class PygletView_Implementation:
             None)  # userInfo
 
         self.associate("_tracking_area", tracking_area)
-
-        self.addTrackingArea_(self._tracking_area)
+        try:
+            self.addTrackingArea_(self._tracking_area)
+        except ValueError:
+            # Fallback to adding the newly created tracking area directly
+            self.addTrackingArea_(tracking_area)
         cocoapy.send_super(self, 'updateTrackingAreas')
 
     @PygletView.method('B')

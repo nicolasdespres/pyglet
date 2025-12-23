@@ -362,6 +362,8 @@ class BaseWindow(EventDispatcher, metaclass=_WindowMetaclass):
     _resizable: bool = False
     _style: str | None = WINDOW_STYLE_DEFAULT
     _fullscreen: bool = False
+    # Internal guard to prevent recursive fullscreen transitions
+    _in_fullscreen_transition: bool = False
     _visible: bool = False
     _vsync: bool = False
     _file_drops: bool = False
@@ -915,6 +917,10 @@ class BaseWindow(EventDispatcher, metaclass=_WindowMetaclass):
 
                 .. versionadded:: 1.2
         """
+        # Avoid re-entrancy causing recursion during transition
+        if self._in_fullscreen_transition:
+            return
+
         if (fullscreen == self._fullscreen and
                 (screen is None or screen is self._screen) and
                 (width is None or width == self._width) and
@@ -930,19 +936,23 @@ class BaseWindow(EventDispatcher, metaclass=_WindowMetaclass):
             assert screen.display is self.display
             self._screen = screen
 
-        self._fullscreen = fullscreen
-        if self._fullscreen:
-            self._width, self._height = self._set_fullscreen_mode(mode, width, height)
-        else:
-            self.screen.restore_mode()
+        self._in_fullscreen_transition = True
+        try:
+            self._fullscreen = fullscreen
+            if self._fullscreen:
+                self._width, self._height = self._set_fullscreen_mode(mode, width, height)
+            else:
+                self.screen.restore_mode()
 
-            self._width, self._height = self._windowed_size
-            if width is not None:
-                self._width = width
-            if height is not None:
-                self._height = height
+                self._width, self._height = self._windowed_size
+                if width is not None:
+                    self._width = width
+                if height is not None:
+                    self._height = height
 
-        self._recreate(['fullscreen'])
+            self._recreate(['fullscreen'])
+        finally:
+            self._in_fullscreen_transition = False
 
         if not self._fullscreen and self._windowed_location:
             # Restore windowed location.
