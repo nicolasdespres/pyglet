@@ -4,7 +4,15 @@ Simple example showing some animated shapes
 import math
 import pyglet
 from pyglet import shapes
+from pyglet.gl import glViewport
+from pyglet.window import key
 
+
+class Camera:
+    def __init__(self, x=0.0, y=0.0, zoom=1.0):
+        self.x = x
+        self.y = y
+        self.zoom = zoom
 
 class ShapesDemo(pyglet.window.Window):
 
@@ -12,6 +20,12 @@ class ShapesDemo(pyglet.window.Window):
         super().__init__(width, height, "Shapes")
         self.time = 0
         self.batch = pyglet.graphics.Batch()
+
+        # Camera controls
+        self.keys = key.KeyStateHandler()
+        self.push_handlers(self.keys)
+        self.left_cam = Camera(0, 0, 1.0)
+        self.right_cam = Camera(150, -50, 1.0)
 
         self.circle = shapes.Circle(360, 240, 75, color=(255, 225, 255, 127), batch=self.batch)
 
@@ -47,11 +61,45 @@ class ShapesDemo(pyglet.window.Window):
 
         coordinates = [[450, 400], [475, 450], [525, 450], [550, 400]]
         self.multiLine = shapes.MultiLine(*coordinates, closed=True, batch=self.batch)
+        self.divider = shapes.Line(self.width // 2, 0, self.width // 2, self.height, thickness=2, color=(255, 255, 255))
+
+    def _apply_camera(self, cam):
+        """Temporarily apply a camera transform to the window view."""
+        orig_view = self.view
+        view_matrix = orig_view.translate((-cam.x * cam.zoom, -cam.y * cam.zoom, 0))
+        view_matrix = view_matrix.scale((cam.zoom, cam.zoom, 1))
+        self.view = view_matrix
+        return orig_view
 
     def on_draw(self):
         """Clear the screen and draw shapes"""
         self.clear()
+        # Use framebuffer size for correct viewport on HiDPI/Retina
+        try:
+            fb_w, fb_h = self.get_framebuffer_size()
+        except AttributeError:
+            fb_w, fb_h = self.get_size()
+
+        # Left half (left_cam)
+        glViewport(0, 0, fb_w // 2, fb_h)
+        orig = self._apply_camera(self.left_cam)
         self.batch.draw()
+        self.view = orig  # restore
+
+        # Right half (right_cam)
+        glViewport(fb_w // 2, 0, fb_w - fb_w // 2, fb_h)
+        orig = self._apply_camera(self.right_cam)
+        self.batch.draw()
+        self.view = orig  # restore
+
+        # Reset to full window and draw the divider line
+        glViewport(0, 0, fb_w, fb_h)
+        self.divider.x = self.width // 2
+        self.divider.x2 = self.width // 2
+        self.divider.y = 0
+        self.divider.y2 = self.height
+        self.divider.draw()
+        FPS.draw()
 
     def update(self, delta_time):
         """Animate the shapes"""
@@ -78,8 +126,42 @@ class ShapesDemo(pyglet.window.Window):
 
         self.multiLine.rotation = self.time * -15
 
+        # Camera controls
+        speed = 200
+        zoom_rate = 1.2  # multiplicative per second
+
+        # Left camera: arrows + Q/E for zoom
+        if self.keys[key.LEFT]:
+            self.left_cam.x -= speed * delta_time
+        if self.keys[key.RIGHT]:
+            self.left_cam.x += speed * delta_time
+        if self.keys[key.DOWN]:
+            self.left_cam.y -= speed * delta_time
+        if self.keys[key.UP]:
+            self.left_cam.y += speed * delta_time
+        if self.keys[key.Q]:
+            self.left_cam.zoom *= (zoom_rate ** delta_time)
+        if self.keys[key.E]:
+            self.left_cam.zoom /= (zoom_rate ** delta_time)
+        self.left_cam.zoom = max(0.2, min(4.0, self.left_cam.zoom))
+
+        # Right camera: WASD + U/O for zoom
+        if self.keys[key.A]:
+            self.right_cam.x -= speed * delta_time
+        if self.keys[key.D]:
+            self.right_cam.x += speed * delta_time
+        if self.keys[key.S]:
+            self.right_cam.y -= speed * delta_time
+        if self.keys[key.W]:
+            self.right_cam.y += speed * delta_time
+        if self.keys[key.U]:
+            self.right_cam.zoom *= (zoom_rate ** delta_time)
+        if self.keys[key.O]:
+            self.right_cam.zoom /= (zoom_rate ** delta_time)
+        self.right_cam.zoom = max(0.2, min(4.0, self.right_cam.zoom))
 
 if __name__ == "__main__":
     demo = ShapesDemo(720, 480)
+    FPS = pyglet.window.FPSDisplay(demo)
     pyglet.clock.schedule_interval(demo.update, 1/30)
     pyglet.app.run()
